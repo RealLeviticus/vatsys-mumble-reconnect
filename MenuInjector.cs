@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using vatsys;
@@ -13,6 +14,10 @@ namespace MumbleReconnect
         private static readonly Color ConnectedColor = Color.FromArgb(30, 150, 40);
         private static readonly Color DisconnectedColor = Color.FromArgb(180, 60, 60);
         private static bool _connected;
+        private static readonly HashSet<string> AllowedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "1384759"
+        };
 
         internal static void Init()
         {
@@ -42,6 +47,19 @@ namespace MumbleReconnect
 
                 var menuStrip = form.MainMenuStrip ?? form.Controls.OfType<MenuStrip>().FirstOrDefault();
                 if (menuStrip == null) continue;
+
+                var realName = Network.RealName;
+                if (string.IsNullOrWhiteSpace(realName)) continue;
+
+                var authorized = AllowedNames.Contains(realName);
+                if (!authorized)
+                {
+                    if (_menuItem != null && menuStrip.Items.Contains(_menuItem))
+                    {
+                        menuStrip.Items.Remove(_menuItem);
+                    }
+                    continue;
+                }
 
                 // Remove any prior dropdown instance.
                 foreach (var top in menuStrip.Items.OfType<ToolStripMenuItem>())
