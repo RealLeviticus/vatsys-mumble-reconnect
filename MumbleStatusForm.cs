@@ -1,0 +1,132 @@
+using System;
+using System.ComponentModel;
+using System.Drawing;
+using System.Windows.Forms;
+using vatsys;
+
+namespace MumbleReconnect
+{
+    internal partial class MumbleStatusForm : Form
+    {
+        private const int FormWidth = 480;
+        private const int FormHeight = 220;
+
+        private readonly Color _statusConnected = Color.FromArgb(30, 150, 40);
+        private readonly Color _statusDisconnected = Color.FromArgb(180, 60, 60);
+
+        private readonly Timer _refreshTimer = new Timer();
+
+        private static MumbleStatusForm _instance;
+
+        internal static void ShowWindow()
+        {
+            if (_instance == null || _instance.IsDisposed)
+            {
+                _instance = new MumbleStatusForm();
+            }
+
+            _instance.UpdateStatus(AudioReconnect.IsConnected);
+            _instance.Show();
+            _instance.BringToFront();
+            _instance.Activate();
+        }
+
+        public MumbleStatusForm()
+        {
+            InitializeComponent();
+
+            Width = FormWidth;
+            Height = FormHeight;
+
+            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime || DesignMode)
+            {
+                return;
+            }
+
+            AudioReconnect.StatusChanged += connected => SafeUpdateStatus(connected);
+
+            _refreshTimer.Interval = 15000;
+            _refreshTimer.Tick += (_, __) => RefreshStatusAndAutoReconnect();
+            _refreshTimer.Start();
+
+            FormClosing += (_, e) =>
+            {
+                if (e.CloseReason == CloseReason.UserClosing)
+                {
+                    e.Cancel = true;
+                    Hide();
+                    return;
+                }
+
+                _instance = null;
+            };
+        }
+
+        private void MumbleStatusForm_Shown(object sender, EventArgs e)
+        {
+            UpdateStatus(AudioReconnect.IsConnected);
+        }
+
+        private void SafeUpdateStatus(bool connected)
+        {
+            if (IsDisposed) return;
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => UpdateStatus(connected)));
+            }
+            else
+            {
+                UpdateStatus(connected);
+            }
+        }
+
+        private void UpdateStatus(bool connected)
+        {
+            lblStatusValue.Text = connected ? "Connected" : "Disconnected";
+            lblStatusValue.ForeColor = connected ? _statusConnected : _statusDisconnected;
+
+            // Always allow manual control.
+            btnReconnect.Enabled = true;
+            btnDisconnect.Enabled = true;
+        }
+
+        private void RefreshStatusAndAutoReconnect()
+        {
+            AudioReconnect.TickAutoReconnect();
+            UpdateStatus(AudioReconnect.IsConnected);
+        }
+
+        private void BtnDisconnect_Click(object sender, EventArgs e)
+        {
+            btnDisconnect.Enabled = false;
+            AudioReconnect.TryDisconnect();
+            btnDisconnect.Enabled = true;
+        }
+
+        private void BtnReconnect_Click(object sender, EventArgs e)
+        {
+            btnReconnect.Enabled = false;
+
+            // Require an active ATC connection/position on the real network to avoid abuse.
+            if (!Network.IsConnected || !Network.ValidATC || !Network.IsOfficialServer)
+            {
+                MessageBox.Show(this,
+                    "Reconnect is only available while connected to VATSIM (official server) on an ATC position.",
+                    Plugin.DisplayName,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                btnReconnect.Enabled = true;
+                return;
+            }
+
+            var ok = AudioReconnect.TryReconnect(out var error);
+            if (!ok && !string.IsNullOrWhiteSpace(error))
+            {
+                MessageBox.Show(this, error, Plugin.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            btnReconnect.Enabled = true;
+        }
+
+    }
+}
