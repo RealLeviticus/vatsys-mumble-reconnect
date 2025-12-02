@@ -13,6 +13,7 @@ namespace MumbleReconnect
         private static bool _pendingRetry;
         private static int _retryCount;
         private static bool _lastConnected = false;
+        private static DateTime _nextRetryUtc = DateTime.MinValue;
 
         public static event Action<bool> StatusChanged;
 
@@ -249,7 +250,8 @@ namespace MumbleReconnect
             {
                 _pendingRetry = true;
                 _retryCount = 0;
-                Errors.Add(new Exception("Disconnected from Mumble. Will retry in 15 seconds."), Plugin.DisplayName);
+                _nextRetryUtc = DateTime.UtcNow.AddSeconds(15);
+                Errors.Add(new Exception("Connection to Mumble Lost. Reconnection attempt in 15 seconds."), Plugin.DisplayName);
                 NotifyStatus(false);
             }
 
@@ -257,7 +259,14 @@ namespace MumbleReconnect
 
             if (!_pendingRetry) return;
 
-            if (!Network.IsConnected || !Network.ValidATC || !Network.IsOfficialServer) return;
+            if (DateTime.UtcNow < _nextRetryUtc) return;
+
+            if (!Network.IsConnected || !Network.ValidATC || !Network.IsOfficialServer)
+            {
+                // push next retry window forward
+                _nextRetryUtc = DateTime.UtcNow.AddSeconds(15);
+                return;
+            }
 
             _retryCount++;
             var ok = TryReconnect(out _);
@@ -265,6 +274,7 @@ namespace MumbleReconnect
             {
                 _pendingRetry = false;
                 _retryCount = 0;
+                _nextRetryUtc = DateTime.MinValue;
                 NotifyStatus(true);
                 return;
             }
@@ -272,7 +282,12 @@ namespace MumbleReconnect
             if (_retryCount >= 3)
             {
                 _pendingRetry = false;
+                _nextRetryUtc = DateTime.MinValue;
                 Errors.Add(new Exception("Failed to reconnect to Mumble after multiple attempts. Please restart client."), Plugin.DisplayName);
+            }
+            else
+            {
+                _nextRetryUtc = DateTime.UtcNow.AddSeconds(15);
             }
         }
     }
