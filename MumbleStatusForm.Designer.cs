@@ -22,9 +22,14 @@ namespace MumbleReconnect
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing)
             {
-                components.Dispose();
+                if (components != null)
+                {
+                    components.Dispose();
+                }
+                _refreshTimer?.Stop();
+                _refreshTimer?.Dispose();
             }
             base.Dispose(disposing);
         }
@@ -55,52 +60,54 @@ namespace MumbleReconnect
             this.contentPanel.Padding = new System.Windows.Forms.Padding(10);
             this.contentPanel.Size = new System.Drawing.Size(411, 191);
             this.contentPanel.TabIndex = 1;
-            // 
+            //
             // btnDisconnect
-            // 
-            this.btnDisconnect.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(170)))), ((int)(((byte)(110)))), ((int)(((byte)(110)))));
-            this.btnDisconnect.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
+            //
+            this.btnDisconnect.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(142)))), ((int)(((byte)(146)))), ((int)(((byte)(149)))));
+            this.btnDisconnect.FlatAppearance.BorderColor = System.Drawing.Color.Black;
+            this.btnDisconnect.FlatAppearance.BorderSize = 2;
             this.btnDisconnect.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnDisconnect.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            this.btnDisconnect.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(245)))), ((int)(((byte)(245)))), ((int)(((byte)(245)))));
+            this.btnDisconnect.Font = new System.Drawing.Font("Terminus (TTF)", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.btnDisconnect.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(0)))), ((int)(((byte)(50)))));
             this.btnDisconnect.Location = new System.Drawing.Point(209, 148);
             this.btnDisconnect.Name = "btnDisconnect";
             this.btnDisconnect.Size = new System.Drawing.Size(187, 28);
             this.btnDisconnect.TabIndex = 2;
-            this.btnDisconnect.Text = "DISCONNECT";
+            this.btnDisconnect.Text = "Disconnect";
             this.btnDisconnect.UseVisualStyleBackColor = false;
             this.btnDisconnect.Click += new System.EventHandler(this.BtnDisconnect_Click);
-            // 
+            //
             // btnReconnect
-            // 
-            this.btnReconnect.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(170)))), ((int)(((byte)(175)))), ((int)(((byte)(177)))));
-            this.btnReconnect.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
+            //
+            this.btnReconnect.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(142)))), ((int)(((byte)(146)))), ((int)(((byte)(149)))));
+            this.btnReconnect.FlatAppearance.BorderColor = System.Drawing.Color.Black;
+            this.btnReconnect.FlatAppearance.BorderSize = 2;
             this.btnReconnect.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnReconnect.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            this.btnReconnect.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(30)))), ((int)(((byte)(40)))), ((int)(((byte)(60)))));
+            this.btnReconnect.Font = new System.Drawing.Font("Terminus (TTF)", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.btnReconnect.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(0)))), ((int)(((byte)(50)))));
             this.btnReconnect.Location = new System.Drawing.Point(9, 148);
             this.btnReconnect.Name = "btnReconnect";
             this.btnReconnect.Size = new System.Drawing.Size(187, 28);
             this.btnReconnect.TabIndex = 1;
-            this.btnReconnect.Text = "RECONNECT";
+            this.btnReconnect.Text = "Reconnect";
             this.btnReconnect.UseVisualStyleBackColor = false;
             this.btnReconnect.Click += new System.EventHandler(this.BtnReconnect_Click);
-            // 
+            //
             // lblStatusValue
-            // 
+            //
             this.lblStatusValue.AutoSize = true;
-            this.lblStatusValue.Font = new System.Drawing.Font("Segoe UI", 18F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblStatusValue.Font = new System.Drawing.Font("Terminus (TTF)", 18F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblStatusValue.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(180)))), ((int)(((byte)(60)))), ((int)(((byte)(60)))));
             this.lblStatusValue.Location = new System.Drawing.Point(15, 77);
             this.lblStatusValue.Name = "lblStatusValue";
             this.lblStatusValue.Size = new System.Drawing.Size(144, 32);
             this.lblStatusValue.TabIndex = 1;
             this.lblStatusValue.Text = "Unknown...";
-            // 
+            //
             // lblStatusLabel
-            // 
+            //
             this.lblStatusLabel.AutoSize = true;
-            this.lblStatusLabel.Font = new System.Drawing.Font("Segoe UI", 26.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblStatusLabel.Font = new System.Drawing.Font("Terminus (TTF)", 20F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblStatusLabel.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(210)))), ((int)(((byte)(220)))), ((int)(((byte)(230)))));
             this.lblStatusLabel.Location = new System.Drawing.Point(11, 30);
             this.lblStatusLabel.Name = "lblStatusLabel";

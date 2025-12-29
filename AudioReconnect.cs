@@ -1,6 +1,7 @@
 using System;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using vatsys;
 
@@ -8,6 +9,11 @@ namespace MumbleReconnect
 {
     internal static class AudioReconnect
     {
+        private const int ReconnectTimeoutSeconds = 5;
+        private const int ReconnectPollIntervalMs = 250;
+        private const int AutoRetryIntervalSeconds = 15;
+        private const int MaxRetryAttempts = 3;
+
         private static bool _everConnected = AFV.IsConnected;
         private static int _promptOpen;
         private static bool _pendingRetry;
@@ -16,6 +22,12 @@ namespace MumbleReconnect
         private static DateTime _nextRetryUtc = DateTime.MinValue;
 
         public static event Action<bool> StatusChanged;
+
+        private class ReconnectResult
+        {
+            public bool Success { get; set; }
+            public string ErrorMessage { get; set; }
+        }
 
         private static readonly Lazy<Type> MumbleType = new Lazy<Type>(() => typeof(Network).Assembly.GetType("vatsys.Mumble"));
         private static readonly Lazy<FieldInfo> MumbleInstanceField =
@@ -26,8 +38,6 @@ namespace MumbleReconnect
             new Lazy<MethodInfo>(() => MumbleType.Value?.GetMethod("Connect", BindingFlags.Instance | BindingFlags.NonPublic));
         private static readonly Lazy<MethodInfo> MumbleIsConnectedGetter =
             new Lazy<MethodInfo>(() => MumbleType.Value?.GetProperty("IsConnected", BindingFlags.Static | BindingFlags.Public)?.GetMethod);
-        private static readonly Lazy<FieldInfo> MumbleServerField =
-            new Lazy<FieldInfo>(() => MumbleType.Value?.GetField("Server", BindingFlags.Static | BindingFlags.Public));
         private static readonly Lazy<MethodInfo> MumbleDisconnectMethod =
             new Lazy<MethodInfo>(() => MumbleType.Value?.GetMethod("Disconnect", BindingFlags.Static | BindingFlags.Public));
 
@@ -52,9 +62,9 @@ namespace MumbleReconnect
         {
             _everConnected = true;
             Interlocked.Exchange(ref _promptOpen, 0);
-                NotifyStatus(true);
-                _pendingRetry = false;
-                _retryCount = 0;
+            NotifyStatus(true);
+            _pendingRetry = false;
+            _retryCount = 0;
         }
 
         private static void OnDisconnected()
@@ -110,13 +120,19 @@ namespace MumbleReconnect
 
         internal static bool TryReconnect()
         {
-            return TryReconnect(out _);
+            var result = TryReconnectAsync().GetAwaiter().GetResult();
+            return result.Success;
         }
 
         internal static bool TryReconnect(out string errorMessage)
         {
-            errorMessage = null;
+            var result = TryReconnectAsync().GetAwaiter().GetResult();
+            errorMessage = result.ErrorMessage;
+            return result.Success;
+        }
 
+        private static async Task<ReconnectResult> TryReconnectAsync()
+        {
             try
             {
                 var mumbleType = MumbleType.Value;
@@ -142,45 +158,29 @@ namespace MumbleReconnect
 
                 reconnectMethod.Invoke(instance, null);
 
-                var deadline = DateTime.UtcNow.AddSeconds(5);
+                var deadline = DateTime.UtcNow.AddSeconds(ReconnectTimeoutSeconds);
                 while (DateTime.UtcNow < deadline)
                 {
                     if (IsConnected)
                     {
                         NotifyStatus(true);
-                        return true;
+                        return new ReconnectResult { Success = true };
                     }
-                    Thread.Sleep(250);
+                    await Task.Delay(ReconnectPollIntervalMs).ConfigureAwait(false);
                 }
 
-                errorMessage = "Reconnect command sent but link did not come up within 5 seconds.";
+                var errorMessage = $"Reconnect command sent but link did not come up within {ReconnectTimeoutSeconds} seconds.";
                 NotifyStatus(false);
-                return false;
+                return new ReconnectResult { Success = false, ErrorMessage = errorMessage };
             }
             catch (Exception ex)
             {
-                errorMessage = ex.Message;
                 Errors.Add(new Exception($"Failed to reconnect audio: {ex.Message}"), Plugin.DisplayName);
-                return false;
+                return new ReconnectResult { Success = false, ErrorMessage = ex.Message };
             }
         }
 
         internal static bool IsConnected => IsMumbleConnected();
-
-        internal static string ServerHost
-        {
-            get
-            {
-                try
-                {
-                    var server = MumbleServerField.Value?.GetValue(null) as string;
-                    if (!string.IsNullOrWhiteSpace(server)) return server;
-                }
-                catch { }
-
-                return "Unknown";
-            }
-        }
 
         internal static void TryDisconnect()
         {
@@ -212,8 +212,9 @@ namespace MumbleReconnect
 
                 return (bool)getter.Invoke(null, null);
             }
-            catch
+            catch (Exception ex)
             {
+                Errors.Add(new Exception($"Failed to check Mumble connection status: {ex.Message}"), Plugin.DisplayName);
                 return false;
             }
         }
@@ -230,7 +231,10 @@ namespace MumbleReconnect
                     _retryCount = 0;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Errors.Add(new Exception($"Error notifying status change: {ex.Message}"), Plugin.DisplayName);
+            }
         }
 
         internal static void TickAutoReconnect()
@@ -250,8 +254,8 @@ namespace MumbleReconnect
             {
                 _pendingRetry = true;
                 _retryCount = 0;
-                _nextRetryUtc = DateTime.UtcNow.AddSeconds(15);
-                Errors.Add(new Exception("Connection to Mumble Lost. Reconnection attempt in 15 seconds."), Plugin.DisplayName);
+                _nextRetryUtc = DateTime.UtcNow.AddSeconds(AutoRetryIntervalSeconds);
+                Errors.Add(new Exception($"Connection to Mumble Lost. Reconnection attempt in {AutoRetryIntervalSeconds} seconds."), Plugin.DisplayName);
                 NotifyStatus(false);
             }
 
@@ -263,8 +267,7 @@ namespace MumbleReconnect
 
             if (!Network.IsConnected || !Network.ValidATC || !Network.IsOfficialServer)
             {
-                // push next retry window forward
-                _nextRetryUtc = DateTime.UtcNow.AddSeconds(15);
+                _nextRetryUtc = DateTime.UtcNow.AddSeconds(AutoRetryIntervalSeconds);
                 return;
             }
 
@@ -279,7 +282,7 @@ namespace MumbleReconnect
                 return;
             }
 
-            if (_retryCount >= 3)
+            if (_retryCount >= MaxRetryAttempts)
             {
                 _pendingRetry = false;
                 _nextRetryUtc = DateTime.MinValue;
@@ -287,7 +290,7 @@ namespace MumbleReconnect
             }
             else
             {
-                _nextRetryUtc = DateTime.UtcNow.AddSeconds(15);
+                _nextRetryUtc = DateTime.UtcNow.AddSeconds(AutoRetryIntervalSeconds);
             }
         }
     }

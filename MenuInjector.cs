@@ -14,9 +14,10 @@ namespace MumbleReconnect
         private static readonly Color ConnectedColor = Color.FromArgb(30, 150, 40);
         private static readonly Color DisconnectedColor = Color.FromArgb(180, 60, 60);
         private static bool _connected;
-        private static readonly HashSet<string> AllowedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> AllowedUsers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "1384759"
+            "1384759",
+            "1252125"
         };
 
         internal static void Init()
@@ -51,7 +52,7 @@ namespace MumbleReconnect
                 var realName = Network.RealName;
                 if (string.IsNullOrWhiteSpace(realName)) continue;
 
-                var authorized = AllowedNames.Contains(realName);
+                var authorized = AllowedUsers.Contains(realName);
                 if (!authorized)
                 {
                     if (_menuItem != null && menuStrip.Items.Contains(_menuItem))
@@ -109,7 +110,10 @@ namespace MumbleReconnect
                 _connected = connected;
                 _menuItem.Invalidate();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Errors.Add(new Exception($"Error updating menu colour: {ex.Message}"), Plugin.DisplayName);
+            }
         }
 
         private static void MenuItem_DrawItem(object sender, PaintEventArgs e)
@@ -117,7 +121,6 @@ namespace MumbleReconnect
             var item = (ToolStripMenuItem)sender;
             Color back = _connected ? ConnectedColor : DisconnectedColor;
             using (var backBrush = new SolidBrush(back))
-            using (var foreBrush = new SolidBrush(Color.White))
             {
                 e.Graphics.FillRectangle(backBrush, item.Bounds);
                 TextRenderer.DrawText(e.Graphics, item.Text, item.Font, item.Bounds, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
