@@ -11,14 +11,9 @@ namespace MumbleReconnect
     {
         private static bool _added;
         private static ToolStripMenuItem _menuItem;
-        private static readonly Color ConnectedColor = Color.FromArgb(30, 150, 40);
-        private static readonly Color DisconnectedColor = Color.FromArgb(180, 60, 60);
+        private static readonly Color ConnectedColor = Color.FromArgb(0, 150, 0);
+        private static readonly Color DisconnectedColor = Color.FromArgb(200, 0, 0);
         private static bool _connected;
-        private static readonly HashSet<string> AllowedUsers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "1384759",
-            "1252125"
-        };
 
         internal static void Init()
         {
@@ -37,6 +32,7 @@ namespace MumbleReconnect
             catch (Exception ex)
             {
                 Errors.Add(ex, Plugin.DisplayName);
+                DiscordLogger.LogMumbleError("Error adding Mumble menu item", ex);
             }
         }
 
@@ -49,33 +45,23 @@ namespace MumbleReconnect
                 var menuStrip = form.MainMenuStrip ?? form.Controls.OfType<MenuStrip>().FirstOrDefault();
                 if (menuStrip == null) continue;
 
-                var realName = Network.RealName;
-                if (string.IsNullOrWhiteSpace(realName)) continue;
+                // Find the Settings menu
+                var settingsMenu = menuStrip.Items.OfType<ToolStripMenuItem>()
+                    .FirstOrDefault(i => string.Equals(i.Text.Trim(), "Settings", StringComparison.OrdinalIgnoreCase));
 
-                var authorized = AllowedUsers.Contains(realName);
-                if (!authorized)
+                if (settingsMenu == null) continue;
+
+                // Remove any prior instance from Settings dropdown
+                var toRemove = settingsMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                    .Where(i => string.Equals(i.Text.Trim(), "Mumble Status", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                foreach (var child in toRemove)
                 {
-                    if (_menuItem != null && menuStrip.Items.Contains(_menuItem))
-                    {
-                        menuStrip.Items.Remove(_menuItem);
-                    }
-                    continue;
+                    settingsMenu.DropDownItems.Remove(child);
                 }
 
-                // Remove any prior dropdown instance.
-                foreach (var top in menuStrip.Items.OfType<ToolStripMenuItem>())
-                {
-                    var toRemove = top.DropDownItems.OfType<ToolStripMenuItem>()
-                        .Where(i => string.Equals(i.Text.Trim(), "Mumble Status", StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-                    foreach (var child in toRemove)
-                    {
-                        top.DropDownItems.Remove(child);
-                    }
-                }
-
-                // Already at top level?
-                if (menuStrip.Items.OfType<ToolStripMenuItem>()
+                // Already exists in Settings?
+                if (settingsMenu.DropDownItems.OfType<ToolStripMenuItem>()
                     .Any(i => string.Equals(i.Text.Trim(), "Mumble Status", StringComparison.OrdinalIgnoreCase)))
                 {
                     _added = true;
@@ -89,7 +75,8 @@ namespace MumbleReconnect
                 _connected = AudioReconnect.IsConnected;
                 UpdateMenuColour(_connected);
 
-                menuStrip.Items.Add(_menuItem);
+                // Add to Settings dropdown
+                settingsMenu.DropDownItems.Add(_menuItem);
 
                 _added = true;
                 Application.Idle -= Application_Idle;
@@ -113,6 +100,7 @@ namespace MumbleReconnect
             catch (Exception ex)
             {
                 Errors.Add(new Exception($"Error updating menu colour: {ex.Message}"), Plugin.DisplayName);
+                DiscordLogger.LogMumbleError("Error updating Mumble menu colour", ex);
             }
         }
 

@@ -6,13 +6,10 @@ using vatsys;
 
 namespace MumbleReconnect
 {
-    internal partial class MumbleStatusForm : Form
+    internal partial class MumbleStatusForm : BaseForm
     {
-        private const int FormWidth = 480;
-        private const int FormHeight = 220;
-
-        private readonly Color _statusConnected = Color.FromArgb(30, 150, 40);
-        private readonly Color _statusDisconnected = Color.FromArgb(180, 60, 60);
+        private readonly Color _statusConnected = Color.FromArgb(0, 128, 0);
+        private readonly Color _statusDisconnected = Color.FromArgb(200, 0, 0);
 
         private readonly Timer _refreshTimer = new Timer();
 
@@ -34,9 +31,7 @@ namespace MumbleReconnect
         public MumbleStatusForm()
         {
             InitializeComponent();
-
-            Width = FormWidth;
-            Height = FormHeight;
+            StyleComponent();
 
             if (LicenseManager.UsageMode == LicenseUsageMode.Designtime || DesignMode)
             {
@@ -83,12 +78,38 @@ namespace MumbleReconnect
 
         private void UpdateStatus(bool connected)
         {
-            lblStatusValue.Text = connected ? "Connected" : "Disconnected";
-            lblStatusValue.ForeColor = connected ? _statusConnected : _statusDisconnected;
+            if (connected)
+            {
+                lblStatusValue.Text = "Connected";
+                lblStatusValue.ForeColor = _statusConnected;
+            }
+            else
+            {
+                // Show different message if not connected to VATSIM network
+                lblStatusValue.Text = !Network.IsConnected ? "Not connected to VATSIM" : "Disconnected";
+                lblStatusValue.ForeColor = _statusDisconnected;
+            }
 
             // Always allow manual control.
             btnReconnect.Enabled = true;
             btnDisconnect.Enabled = true;
+        }
+
+        private void StyleComponent()
+        {
+            // Style labels - using vatSys theme colors
+            lblStatusLabel.BackColor = Colours.GetColour(Colours.Identities.WindowBackground);
+            lblStatusLabel.ForeColor = Colours.GetColour(Colours.Identities.InteractiveText);
+
+            lblStatusValue.BackColor = Colours.GetColour(Colours.Identities.WindowBackground);
+            lblStatusValue.ForeColor = Colours.GetColour(Colours.Identities.InteractiveText);
+
+            // Style buttons - using vatSys GenericButton defaults
+            btnReconnect.BackColor = Colours.GetColour(Colours.Identities.WindowBackground);
+            btnReconnect.ForeColor = Colours.GetColour(Colours.Identities.InteractiveText);
+
+            btnDisconnect.BackColor = Colours.GetColour(Colours.Identities.WindowBackground);
+            btnDisconnect.ForeColor = Colours.GetColour(Colours.Identities.InteractiveText);
         }
 
         private void RefreshStatusAndAutoReconnect()
@@ -127,6 +148,5 @@ namespace MumbleReconnect
             }
             btnReconnect.Enabled = true;
         }
-
     }
 }

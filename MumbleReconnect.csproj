@@ -53,21 +53,26 @@
     <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="AudioReconnect.cs" />
-    <Compile Include="MenuInjector.cs" />
-    <Compile Include="MumbleStatusForm.cs">
-      <SubType>Form</SubType>
+    <Compile Include="Mumble\AudioReconnect.cs" />
+    <Compile Include="Core\DiscordLogger.cs" />
+    <Compile Include="Mumble\MenuInjector.cs" />
+    <Compile Include="Components\MumbleStatusForm.cs">
+      <SubType>designer</SubType>
     </Compile>
-    <Compile Include="MumbleStatusForm.Designer.cs">
+    <Compile Include="Components\MumbleStatusForm.Designer.cs">
       <DependentUpon>MumbleStatusForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="Plugin.cs" />
+    <Compile Include="Core\Plugin.cs" />
     <Compile Include="Properties\\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.ComponentModel.Composition" />
     <Reference Include="System.Configuration" />
@@ -81,7 +86,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="MumbleStatusForm.resx">
+    <EmbeddedResource Include="Components\MumbleStatusForm.resx">
       <DependentUpon>MumbleStatusForm.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
