@@ -24,12 +24,11 @@ namespace MumbleReconnect
         {
             if (disposing)
             {
+                AudioReconnect.StatusChanged -= _statusChangedHandler;
                 if (components != null)
                 {
                     components.Dispose();
                 }
-                _refreshTimer?.Stop();
-                _refreshTimer?.Dispose();
             }
             base.Dispose(disposing);
         }

@@ -11,15 +11,19 @@ namespace MumbleReconnect
     {
         private const int ReconnectTimeoutSeconds = 5;
         private const int ReconnectPollIntervalMs = 250;
-        private const int AutoRetryIntervalSeconds = 15;
-        private const int MaxRetryAttempts = 3;
+        private const int AutoRetryIntervalSeconds = 5;
+        private const int MaxRetryAttempts = 5;
+        private const int StatusPollIntervalMs = 5000;
 
-        private static bool _everConnected = AFV.IsConnected;
+        private static readonly object _lock = new object();
+        private static volatile bool _everConnected = AFV.IsConnected;
         private static int _promptOpen;
         private static bool _pendingRetry;
         private static int _retryCount;
-        private static bool _lastConnected = false;
+        private static volatile bool _lastConnected = false;
         private static DateTime _nextRetryUtc = DateTime.MinValue;
+        private static System.Threading.Timer _pollTimer;
+        private static int _tickRunning;
 
         public static event Action<bool> StatusChanged;
 
@@ -51,11 +55,18 @@ namespace MumbleReconnect
                 _everConnected = IsConnected;
                 _lastConnected = IsConnected;
                 NotifyStatus(IsConnected);
+
+                // Start a background timer to poll connection status and drive auto-reconnect
+                _pollTimer = new System.Threading.Timer(
+                    _ => TickAutoReconnect(),
+                    null,
+                    StatusPollIntervalMs,
+                    StatusPollIntervalMs);
             }
             catch (Exception ex)
             {
                 Errors.Add(ex, Plugin.DisplayName);
-                DiscordLogger.LogMumbleError("Failed to initialize Mumble audio reconnect", ex);
+                _ = DiscordLogger.LogMumbleError("Failed to initialize Mumble audio reconnect", ex);
             }
         }
 
@@ -64,8 +75,11 @@ namespace MumbleReconnect
             _everConnected = true;
             Interlocked.Exchange(ref _promptOpen, 0);
             NotifyStatus(true);
-            _pendingRetry = false;
-            _retryCount = 0;
+            lock (_lock)
+            {
+                _pendingRetry = false;
+                _retryCount = 0;
+            }
         }
 
         private static void OnDisconnected()
@@ -105,7 +119,7 @@ namespace MumbleReconnect
                 catch (Exception ex)
                 {
                     Errors.Add(ex, Plugin.DisplayName);
-                    DiscordLogger.LogMumbleError("Error showing Mumble reconnect prompt", ex);
+                    _ = DiscordLogger.LogMumbleError("Error showing Mumble reconnect prompt", ex);
                 }
                 finally
                 {
@@ -122,18 +136,28 @@ namespace MumbleReconnect
 
         internal static bool TryReconnect()
         {
-            var result = TryReconnectAsync().GetAwaiter().GetResult();
-            return result.Success;
+            return TryReconnectInternal(out _);
         }
 
         internal static bool TryReconnect(out string errorMessage)
         {
-            var result = TryReconnectAsync().GetAwaiter().GetResult();
+            return TryReconnectInternal(out errorMessage);
+        }
+
+        internal static async Task<bool> TryReconnectAsync()
+        {
+            var result = await TryReconnectCoreAsync().ConfigureAwait(false);
+            return result.Success;
+        }
+
+        private static bool TryReconnectInternal(out string errorMessage)
+        {
+            var result = TryReconnectCoreAsync().GetAwaiter().GetResult();
             errorMessage = result.ErrorMessage;
             return result.Success;
         }
 
-        private static async Task<ReconnectResult> TryReconnectAsync()
+        private static async Task<ReconnectResult> TryReconnectCoreAsync()
         {
             try
             {
@@ -173,13 +197,13 @@ namespace MumbleReconnect
 
                 var errorMessage = $"Reconnect command sent but link did not come up within {ReconnectTimeoutSeconds} seconds.";
                 NotifyStatus(false);
-                DiscordLogger.LogMumbleError(errorMessage);
+                _ = DiscordLogger.LogMumbleError(errorMessage);
                 return new ReconnectResult { Success = false, ErrorMessage = errorMessage };
             }
             catch (Exception ex)
             {
                 Errors.Add(new Exception($"Failed to reconnect audio: {ex.Message}"), Plugin.DisplayName);
-                DiscordLogger.LogMumbleError("Failed to reconnect to Mumble audio", ex);
+                _ = DiscordLogger.LogMumbleError("Failed to reconnect to Mumble audio", ex);
                 return new ReconnectResult { Success = false, ErrorMessage = ex.Message };
             }
         }
@@ -197,13 +221,16 @@ namespace MumbleReconnect
             catch (Exception ex)
             {
                 Errors.Add(new Exception($"Failed to disconnect audio: {ex.Message}"), Plugin.DisplayName);
-                DiscordLogger.LogMumbleError("Failed to disconnect Mumble audio", ex);
+                _ = DiscordLogger.LogMumbleError("Failed to disconnect Mumble audio", ex);
             }
             finally
             {
                 NotifyStatus(false);
-                _pendingRetry = false;
-                _retryCount = 0;
+                lock (_lock)
+                {
+                    _pendingRetry = false;
+                    _retryCount = 0;
+                }
             }
         }
 
@@ -220,7 +247,6 @@ namespace MumbleReconnect
             catch (Exception ex)
             {
                 Errors.Add(new Exception($"Failed to check Mumble connection status: {ex.Message}"), Plugin.DisplayName);
-                DiscordLogger.LogMumbleError("Failed to check Mumble connection status", ex);
                 return false;
             }
         }
@@ -233,18 +259,35 @@ namespace MumbleReconnect
                 _lastConnected = connected;
                 if (connected)
                 {
-                    _pendingRetry = false;
-                    _retryCount = 0;
+                    lock (_lock)
+                    {
+                        _pendingRetry = false;
+                        _retryCount = 0;
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Errors.Add(new Exception($"Error notifying status change: {ex.Message}"), Plugin.DisplayName);
-                DiscordLogger.LogMumbleError("Error notifying Mumble status change", ex);
+                _ = DiscordLogger.LogMumbleError("Error notifying Mumble status change", ex);
             }
         }
 
         internal static void TickAutoReconnect()
+        {
+            // Prevent reentrant calls — the timer can fire again while TryReconnect blocks
+            if (Interlocked.CompareExchange(ref _tickRunning, 1, 0) != 0) return;
+            try
+            {
+                TickAutoReconnectCore();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _tickRunning, 0);
+            }
+        }
+
+        private static void TickAutoReconnectCore()
         {
             // Only check for disconnects when connected to the network
             if (!Network.IsConnected)
@@ -257,26 +300,30 @@ namespace MumbleReconnect
             if (connected)
             {
                 if (!_lastConnected) NotifyStatus(true);
-                _pendingRetry = false;
-                _retryCount = 0;
+                lock (_lock)
+                {
+                    _pendingRetry = false;
+                    _retryCount = 0;
+                }
                 _lastConnected = true;
                 return;
             }
 
             if (!_pendingRetry)
             {
-                _pendingRetry = true;
-                _retryCount = 0;
+                lock (_lock)
+                {
+                    _pendingRetry = true;
+                    _retryCount = 0;
+                }
                 _nextRetryUtc = DateTime.UtcNow.AddSeconds(AutoRetryIntervalSeconds);
                 var errorMsg = $"Connection to Mumble Lost. Reconnection attempt in {AutoRetryIntervalSeconds} seconds.";
                 Errors.Add(new Exception(errorMsg), Plugin.DisplayName);
-                DiscordLogger.LogMumbleError(errorMsg);
+                _ = DiscordLogger.LogMumbleError(errorMsg);
                 NotifyStatus(false);
             }
 
             _lastConnected = false;
-
-            if (!_pendingRetry) return;
 
             if (DateTime.UtcNow < _nextRetryUtc) return;
 
@@ -287,24 +334,31 @@ namespace MumbleReconnect
             }
 
             _retryCount++;
+            var attemptNumber = _retryCount;
             var ok = TryReconnect(out _);
             if (ok)
             {
-                _pendingRetry = false;
-                _retryCount = 0;
+                lock (_lock)
+                {
+                    _pendingRetry = false;
+                    _retryCount = 0;
+                }
                 _nextRetryUtc = DateTime.MinValue;
                 NotifyStatus(true);
-                DiscordLogger.LogMumbleReconnect($"Mumble auto-reconnection successful after {_retryCount} attempt(s)");
+                _ = DiscordLogger.LogMumbleReconnect($"Mumble auto-reconnection successful after {attemptNumber} attempt(s)");
                 return;
             }
 
             if (_retryCount >= MaxRetryAttempts)
             {
-                _pendingRetry = false;
+                lock (_lock)
+                {
+                    _pendingRetry = false;
+                }
                 _nextRetryUtc = DateTime.MinValue;
                 var errorMsg = "Failed to reconnect to Mumble after multiple attempts. Please restart client.";
                 Errors.Add(new Exception(errorMsg), Plugin.DisplayName);
-                DiscordLogger.LogMumbleError(errorMsg);
+                _ = DiscordLogger.LogMumbleError(errorMsg);
             }
             else
             {

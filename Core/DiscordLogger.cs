@@ -1,6 +1,7 @@
 using System;
 using System.Configuration;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -14,11 +15,22 @@ namespace MumbleReconnect
     {
         private const string WebhookUrl = "https://discord.com/api/webhooks/1462706456381100052/RtUMW4K29oRSbuB4jcUjaTY5DHCE8arkE28oyR31jb7kWtA32yz7f7PRtObdFUSYhKkM";
 
-        public static async void LogMumbleError(string message, Exception ex = null)
+        private static readonly HttpClient _httpClient;
+
+        static DiscordLogger()
+        {
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            _httpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+        }
+
+        public static async Task LogMumbleError(string message, Exception ex = null)
         {
             try
             {
-                await LogToDiscordAsync("Mumble Error", message, 15158332, ex);
+                await LogToDiscordAsync("Mumble Error", message, 15158332, ex).ConfigureAwait(false);
             }
             catch
             {
@@ -26,11 +38,11 @@ namespace MumbleReconnect
             }
         }
 
-        public static async void LogMumbleReconnect(string message)
+        public static async Task LogMumbleReconnect(string message)
         {
             try
             {
-                await LogToDiscordAsync("Mumble Reconnected", message, 3066993, null); // Green color
+                await LogToDiscordAsync("Mumble Reconnected", message, 3066993, null).ConfigureAwait(false); // Green color
             }
             catch
             {
@@ -111,13 +123,9 @@ namespace MumbleReconnect
                 };
 
                 var json = JsonConvert.SerializeObject(embed);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                using (var client = new HttpClient())
+                using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
                 {
-                    client.Timeout = TimeSpan.FromSeconds(5);
-                    var response = await client.PostAsync(WebhookUrl, content);
-                    // We don't need to check the response - just fire and forget
+                    await _httpClient.PostAsync(WebhookUrl, content).ConfigureAwait(false);
                 }
             }
             catch
@@ -126,7 +134,7 @@ namespace MumbleReconnect
             }
         }
 
-        private static string GetCID()
+        internal static string GetCID()
         {
             try
             {

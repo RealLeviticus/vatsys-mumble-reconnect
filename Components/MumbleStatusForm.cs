@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using vatsys;
 
@@ -11,7 +12,7 @@ namespace MumbleReconnect
         private readonly Color _statusConnected = Color.FromArgb(0, 128, 0);
         private readonly Color _statusDisconnected = Color.FromArgb(200, 0, 0);
 
-        private readonly Timer _refreshTimer = new Timer();
+        private readonly Action<bool> _statusChangedHandler;
 
         private static MumbleStatusForm _instance;
 
@@ -38,11 +39,7 @@ namespace MumbleReconnect
                 return;
             }
 
-            AudioReconnect.StatusChanged += connected => SafeUpdateStatus(connected);
-
-            _refreshTimer.Interval = 15000;
-            _refreshTimer.Tick += (_, __) => RefreshStatusAndAutoReconnect();
-            _refreshTimer.Start();
+            AudioReconnect.StatusChanged += _statusChangedHandler = connected => SafeUpdateStatus(connected);
 
             FormClosing += (_, e) =>
             {
@@ -53,6 +50,7 @@ namespace MumbleReconnect
                     return;
                 }
 
+                AudioReconnect.StatusChanged -= _statusChangedHandler;
                 _instance = null;
             };
         }
@@ -112,12 +110,6 @@ namespace MumbleReconnect
             btnDisconnect.ForeColor = Colours.GetColour(Colours.Identities.InteractiveText);
         }
 
-        private void RefreshStatusAndAutoReconnect()
-        {
-            AudioReconnect.TickAutoReconnect();
-            UpdateStatus(AudioReconnect.IsConnected);
-        }
-
         private void BtnDisconnect_Click(object sender, EventArgs e)
         {
             btnDisconnect.Enabled = false;
@@ -125,7 +117,7 @@ namespace MumbleReconnect
             btnDisconnect.Enabled = true;
         }
 
-        private void BtnReconnect_Click(object sender, EventArgs e)
+        private async void BtnReconnect_Click(object sender, EventArgs e)
         {
             btnReconnect.Enabled = false;
 
@@ -141,10 +133,10 @@ namespace MumbleReconnect
                 return;
             }
 
-            var ok = AudioReconnect.TryReconnect(out var error);
-            if (!ok && !string.IsNullOrWhiteSpace(error))
+            var ok = await AudioReconnect.TryReconnectAsync();
+            if (!ok)
             {
-                MessageBox.Show(this, error, Plugin.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, "Reconnect failed. Check logs for details.", Plugin.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             btnReconnect.Enabled = true;
         }

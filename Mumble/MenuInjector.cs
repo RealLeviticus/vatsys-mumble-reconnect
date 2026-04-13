@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using vatsys;
@@ -11,9 +10,10 @@ namespace MumbleReconnect
     {
         private static bool _added;
         private static ToolStripMenuItem _menuItem;
-        private static readonly Color ConnectedColor = Color.FromArgb(0, 150, 0);
         private static readonly Color DisconnectedColor = Color.FromArgb(200, 0, 0);
         private static bool _connected;
+
+        private static readonly string[] WhitelistedCIDs = new[] { "1384759" };
 
         internal static void Init()
         {
@@ -32,7 +32,7 @@ namespace MumbleReconnect
             catch (Exception ex)
             {
                 Errors.Add(ex, Plugin.DisplayName);
-                DiscordLogger.LogMumbleError("Error adding Mumble menu item", ex);
+                _ = DiscordLogger.LogMumbleError("Error adding Mumble menu item", ex);
             }
         }
 
@@ -45,38 +45,58 @@ namespace MumbleReconnect
                 var menuStrip = form.MainMenuStrip ?? form.Controls.OfType<MenuStrip>().FirstOrDefault();
                 if (menuStrip == null) continue;
 
-                // Find the Settings menu
-                var settingsMenu = menuStrip.Items.OfType<ToolStripMenuItem>()
-                    .FirstOrDefault(i => string.Equals(i.Text.Trim(), "Settings", StringComparison.OrdinalIgnoreCase));
-
-                if (settingsMenu == null) continue;
-
-                // Remove any prior instance from Settings dropdown
-                var toRemove = settingsMenu.DropDownItems.OfType<ToolStripMenuItem>()
+                // Remove any prior top-level instance
+                var toRemove = menuStrip.Items.OfType<ToolStripMenuItem>()
                     .Where(i => string.Equals(i.Text.Trim(), "Mumble Status", StringComparison.OrdinalIgnoreCase))
                     .ToList();
                 foreach (var child in toRemove)
                 {
-                    settingsMenu.DropDownItems.Remove(child);
+                    menuStrip.Items.Remove(child);
                 }
 
-                // Already exists in Settings?
-                if (settingsMenu.DropDownItems.OfType<ToolStripMenuItem>()
-                    .Any(i => string.Equals(i.Text.Trim(), "Mumble Status", StringComparison.OrdinalIgnoreCase)))
-                {
-                    _added = true;
-                    Application.Idle -= Application_Idle;
-                    return;
-                }
-
-                _menuItem = new ToolStripMenuItem("Mumble Status") { Name = "MumbleStatusMenuItem" };
-                _menuItem.Click += (_, __) => MumbleStatusForm.ShowWindow();
-                _menuItem.Paint += MenuItem_DrawItem;
+                _menuItem = new ToolStripMenuItem("Mumble") { Name = "MumbleStatusMenuItem" };
+                _menuItem.Paint += MenuItem_Paint;
                 _connected = AudioReconnect.IsConnected;
-                UpdateMenuColour(_connected);
 
-                // Add to Settings dropdown
-                settingsMenu.DropDownItems.Add(_menuItem);
+                // Add a Reconnect dropdown item
+                var reconnectItem = new ToolStripMenuItem("Reconnect");
+                reconnectItem.Click += async (_, __) =>
+                {
+                    if (!Network.IsConnected || !Network.ValidATC || !Network.IsOfficialServer)
+                    {
+                        MessageBox.Show(
+                            "Reconnect is only available while connected to VATSIM (official server) on an ATC position.",
+                            Plugin.DisplayName,
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    reconnectItem.Enabled = false;
+                    var ok = await AudioReconnect.TryReconnectAsync();
+                    if (!ok)
+                    {
+                        MessageBox.Show("Reconnect failed. Check logs for details.",
+                            Plugin.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                    reconnectItem.Enabled = true;
+                };
+                _menuItem.DropDownItems.Add(reconnectItem);
+
+                // Add Disconnect option for whitelisted CIDs only
+                var cid = DiscordLogger.GetCID();
+                if (Array.Exists(WhitelistedCIDs, id => id == cid))
+                {
+                    var disconnectItem = new ToolStripMenuItem("Disconnect");
+                    disconnectItem.Click += (_, __) =>
+                    {
+                        AudioReconnect.TryDisconnect();
+                    };
+                    _menuItem.DropDownItems.Add(disconnectItem);
+                }
+
+                // Append to the end of the menu bar (far right)
+                menuStrip.Items.Add(_menuItem);
 
                 _added = true;
                 Application.Idle -= Application_Idle;
@@ -100,19 +120,22 @@ namespace MumbleReconnect
             catch (Exception ex)
             {
                 Errors.Add(new Exception($"Error updating menu colour: {ex.Message}"), Plugin.DisplayName);
-                DiscordLogger.LogMumbleError("Error updating Mumble menu colour", ex);
+                _ = DiscordLogger.LogMumbleError("Error updating Mumble menu colour", ex);
             }
         }
 
-        private static void MenuItem_DrawItem(object sender, PaintEventArgs e)
+        private static void MenuItem_Paint(object sender, PaintEventArgs e)
         {
+            if (_connected) return; // Let the default renderer draw normally when connected
+
             var item = (ToolStripMenuItem)sender;
-            Color back = _connected ? ConnectedColor : DisconnectedColor;
-            using (var backBrush = new SolidBrush(back))
+            var rect = new Rectangle(Point.Empty, item.Size);
+            using (var brush = new SolidBrush(DisconnectedColor))
             {
-                e.Graphics.FillRectangle(backBrush, item.Bounds);
-                TextRenderer.DrawText(e.Graphics, item.Text, item.Font, item.Bounds, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                e.Graphics.FillRectangle(brush, rect);
             }
+            TextRenderer.DrawText(e.Graphics, item.Text, item.Font, rect, Color.White,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
     }
 }
