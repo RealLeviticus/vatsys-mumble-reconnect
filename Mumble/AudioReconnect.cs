@@ -295,6 +295,13 @@ namespace MumbleReconnect
                 return;
             }
 
+            // Don't try to reconnect if Mumble has never connected yet —
+            // the user may still be in the process of connecting.
+            if (!_everConnected)
+            {
+                return;
+            }
+
             var connected = IsMumbleConnected();
 
             if (connected)
