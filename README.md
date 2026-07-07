@@ -5,11 +5,10 @@ A vatSys plugin that detects AFV/Mumble audio disconnects and provides manual an
 ## Features
 - Detects AFV/Mumble audio connection state via a `Mumble Status` menu bar button.
 - Red background indicator when audio is disconnected; default styling when connected.
-- Dropdown with a `Reconnect` button (available to all users).
+- Dropdown with `Status` (opens a status window) and `Reconnect` buttons (available to all users).
 - Optional `Disconnect` button in the dropdown for whitelisted CIDs only.
-- Automatic background reconnect attempts every 5 seconds (up to 5 retries) when audio drops while connected to VATSIM.
-- Prompt on audio loss offering a manual Retry action.
-- Discord webhook logging for errors and reconnection events.
+- Automatic background reconnect attempts with exponential backoff (5/10/20/40/60 seconds) when audio drops while connected to VATSIM, falling back to a slow retry every 60 seconds after the fast attempts are exhausted.
+- Prompt on audio loss offering a manual Retry action (only when Mumble is actually disconnected).
 - Uses reflection to call internal vatSys Mumble methods (connect/reconnect/disconnect).
 
 ## Installation
@@ -30,15 +29,17 @@ Notes:
 - After installation, open vatSys. A `Mumble Status` button will appear at the far right of the menu bar.
 - The button appears with default styling when connected, and turns red with white text when disconnected.
 - Click the button to open a dropdown:
+  - `Status` -- opens a status window with the current connection state and Reconnect button.
   - `Reconnect` -- attempts an immediate reconnect (only available while connected to VATSIM on an ATC position).
   - `Disconnect` -- forces a disconnect (only visible for whitelisted CIDs).
 - When the plugin detects an audio loss it will:
   - Show a prompt offering Retry (message box on a separate STA thread).
-  - Begin automatic background reconnect attempts (every 5 seconds, up to 5 attempts) when connected to the official VATSIM server on an ATC position.
+  - Begin automatic background reconnect attempts (backing off from 5 up to 60 seconds between attempts) when connected to the official VATSIM server on an ATC position.
 
 Behavior details:
 - Manual reconnect is only allowed while connected to VATSIM on an ATC position (to prevent abuse).
-- Automatic retries stop after 5 failed attempts; errors are logged via the host error mechanism and Discord.
+- After 5 failed fast attempts the plugin logs a single warning and keeps retrying quietly once per minute until the connection is restored.
+- A manual `Disconnect` suspends auto-reconnect until the user reconnects manually (or the connection is restored externally).
 
 ## Troubleshooting
 - Menu not visible: wait a few seconds after vatSys starts. The plugin waits for the UI to be ready before injecting the menu.
@@ -48,7 +49,7 @@ Behavior details:
 
 ## Building from source
 - Target: .NET Framework 4.7.2, C# 7.3
-- Depends on Newtonsoft.Json (via NuGet, see `packages.config`).
+- No NuGet dependencies - only .NET Framework and the vatSys host assemblies.
 - The plugin exports via MEF: `[Export(typeof(IPlugin))]` and depends on the `vatsys` host assemblies at runtime.
 - After building, copy the compiled DLL to the vatSys plugin folder as described above.
 

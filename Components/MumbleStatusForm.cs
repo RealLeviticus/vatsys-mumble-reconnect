@@ -39,6 +39,9 @@ namespace MumbleReconnect
                 return;
             }
 
+            // Disconnect is restricted to whitelisted CIDs, same as the menu item.
+            btnDisconnect.Visible = MenuInjector.IsDisconnectAllowed();
+
             AudioReconnect.StatusChanged += _statusChangedHandler = connected => SafeUpdateStatus(connected);
 
             FormClosing += (_, e) =>

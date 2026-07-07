@@ -1,19 +1,30 @@
 using System;
+using System.Configuration;
+using System.IO;
 using System.Linq;
 using System.Drawing;
 using System.Windows.Forms;
+using System.Xml;
 using vatsys;
 
 namespace MumbleReconnect
 {
     internal static class MenuInjector
     {
+        private const string MenuItemName = "MumbleStatusMenuItem";
+
         private static bool _added;
         private static ToolStripMenuItem _menuItem;
         private static readonly Color DisconnectedColor = Color.FromArgb(200, 0, 0);
-        private static bool _connected;
+        private static volatile bool _connected;
 
         private static readonly string[] WhitelistedCIDs = new[] { "1384759" };
+
+        internal static bool IsDisconnectAllowed()
+        {
+            var cid = GetCID();
+            return Array.Exists(WhitelistedCIDs, id => id == cid);
+        }
 
         internal static void Init()
         {
@@ -32,7 +43,6 @@ namespace MumbleReconnect
             catch (Exception ex)
             {
                 Errors.Add(ex, Plugin.DisplayName);
-                _ = DiscordLogger.LogMumbleError("Error adding Mumble menu item", ex);
             }
         }
 
@@ -45,18 +55,25 @@ namespace MumbleReconnect
                 var menuStrip = form.MainMenuStrip ?? form.Controls.OfType<MenuStrip>().FirstOrDefault();
                 if (menuStrip == null) continue;
 
-                // Remove any prior top-level instance
+                // Remove any prior instance (e.g. if the plugin is reloaded)
                 var toRemove = menuStrip.Items.OfType<ToolStripMenuItem>()
-                    .Where(i => string.Equals(i.Text.Trim(), "Mumble Status", StringComparison.OrdinalIgnoreCase))
+                    .Where(i => i.Name == MenuItemName ||
+                        string.Equals(i.Text?.Trim(), "Mumble", StringComparison.OrdinalIgnoreCase))
                     .ToList();
                 foreach (var child in toRemove)
                 {
                     menuStrip.Items.Remove(child);
+                    child.Dispose();
                 }
 
-                _menuItem = new ToolStripMenuItem("Mumble") { Name = "MumbleStatusMenuItem" };
+                _menuItem = new ToolStripMenuItem("Mumble") { Name = MenuItemName };
                 _menuItem.Paint += MenuItem_Paint;
                 _connected = AudioReconnect.IsConnected;
+
+                // Status window
+                var statusItem = new ToolStripMenuItem("Status");
+                statusItem.Click += (_, __) => MumbleStatusForm.ShowWindow();
+                _menuItem.DropDownItems.Add(statusItem);
 
                 // Add a Reconnect dropdown item
                 var reconnectItem = new ToolStripMenuItem("Reconnect");
@@ -73,19 +90,24 @@ namespace MumbleReconnect
                     }
 
                     reconnectItem.Enabled = false;
-                    var ok = await AudioReconnect.TryReconnectAsync();
-                    if (!ok)
+                    try
                     {
-                        MessageBox.Show("Reconnect failed. Check logs for details.",
-                            Plugin.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        var ok = await AudioReconnect.TryReconnectAsync();
+                        if (!ok)
+                        {
+                            MessageBox.Show("Reconnect failed. Check logs for details.",
+                                Plugin.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
                     }
-                    reconnectItem.Enabled = true;
+                    finally
+                    {
+                        reconnectItem.Enabled = true;
+                    }
                 };
                 _menuItem.DropDownItems.Add(reconnectItem);
 
                 // Add Disconnect option for whitelisted CIDs only
-                var cid = DiscordLogger.GetCID();
-                if (Array.Exists(WhitelistedCIDs, id => id == cid))
+                if (IsDisconnectAllowed())
                 {
                     var disconnectItem = new ToolStripMenuItem("Disconnect");
                     disconnectItem.Click += (_, __) =>
@@ -113,14 +135,26 @@ namespace MumbleReconnect
         {
             try
             {
-                if (_menuItem == null) return;
+                var menuItem = _menuItem;
+                if (menuItem == null) return;
                 _connected = connected;
-                _menuItem.Invalidate();
+
+                // Status changes arrive on the poll-timer thread; repaint on the UI thread.
+                var parent = menuItem.GetCurrentParent();
+                if (parent == null || parent.IsDisposed) return;
+
+                if (parent.InvokeRequired)
+                {
+                    parent.BeginInvoke(new Action(() => menuItem.Invalidate()));
+                }
+                else
+                {
+                    menuItem.Invalidate();
+                }
             }
             catch (Exception ex)
             {
                 Errors.Add(new Exception($"Error updating menu colour: {ex.Message}"), Plugin.DisplayName);
-                _ = DiscordLogger.LogMumbleError("Error updating Mumble menu colour", ex);
             }
         }
 
@@ -136,6 +170,42 @@ namespace MumbleReconnect
             }
             TextRenderer.DrawText(e.Graphics, item.Text, item.Font, rect, Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+
+        internal static string GetCID()
+        {
+            try
+            {
+                var configuration = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.PerUserRoamingAndLocal);
+
+                if (!configuration.HasFile) return "Unknown";
+
+                if (!File.Exists(configuration.FilePath)) return "Unknown";
+
+                var config = File.ReadAllText(configuration.FilePath);
+
+                XmlDocument xmlDocument = new XmlDocument();
+                xmlDocument.LoadXml(config);
+
+                var cidString = string.Empty;
+
+                foreach (XmlNode childNode in xmlDocument.DocumentElement.SelectSingleNode("userSettings").SelectSingleNode("vatsys.Properties.Settings").ChildNodes)
+                {
+                    if (childNode.Attributes.GetNamedItem("name").Value == "VATSIMID")
+                    {
+                        cidString = childNode.InnerText;
+                        break;
+                    }
+                }
+
+                var success = int.TryParse(cidString, out var cid);
+
+                return success ? cid.ToString() : "Unknown";
+            }
+            catch
+            {
+                return "Unknown";
+            }
         }
     }
 }
