@@ -5,7 +5,7 @@ A vatSys plugin that detects AFV/Mumble audio disconnects and provides manual an
 ## Features
 - Detects AFV/Mumble audio connection state via a `Mumble Status` menu bar button.
 - Red background indicator when audio is disconnected; default styling when connected.
-- Dropdown with `Status` (opens a status window) and `Reconnect` buttons (available to all users).
+- Dropdown with a `Reconnect` button (available to all users).
 - Optional `Disconnect` button in the dropdown for whitelisted CIDs only.
 - Automatic background reconnect attempts with exponential backoff (5/10/20/40/60 seconds) when audio drops while connected to VATSIM, falling back to a slow retry every 60 seconds after the fast attempts are exhausted.
 - Prompt on audio loss offering a manual Retry action (only when Mumble is actually disconnected).
@@ -29,7 +29,6 @@ Notes:
 - After installation, open vatSys. A `Mumble Status` button will appear at the far right of the menu bar.
 - The button appears with default styling when connected, and turns red with white text when disconnected.
 - Click the button to open a dropdown:
-  - `Status` -- opens a status window with the current connection state and Reconnect button.
   - `Reconnect` -- attempts an immediate reconnect (only available while connected to VATSIM on an ATC position).
   - `Disconnect` -- forces a disconnect (only visible for whitelisted CIDs).
 - When the plugin detects an audio loss it will:

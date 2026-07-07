@@ -70,11 +70,6 @@ namespace MumbleReconnect
                 _menuItem.Paint += MenuItem_Paint;
                 _connected = AudioReconnect.IsConnected;
 
-                // Status window
-                var statusItem = new ToolStripMenuItem("Status");
-                statusItem.Click += (_, __) => MumbleStatusForm.ShowWindow();
-                _menuItem.DropDownItems.Add(statusItem);
-
                 // Add a Reconnect dropdown item
                 var reconnectItem = new ToolStripMenuItem("Reconnect");
                 reconnectItem.Click += async (_, __) =>
