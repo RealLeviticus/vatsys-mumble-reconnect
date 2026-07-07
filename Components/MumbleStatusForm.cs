@@ -127,11 +127,9 @@ namespace MumbleReconnect
             // Require an active ATC connection/position on the real network to avoid abuse.
             if (!Network.IsConnected || !Network.ValidATC || !Network.IsOfficialServer)
             {
-                MessageBox.Show(this,
-                    "Reconnect is only available while connected to VATSIM (official server) on an ATC position.",
-                    Plugin.DisplayName,
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                Errors.Add(new Exception(
+                    "Reconnect is only available while connected to VATSIM (official server) on an ATC position."),
+                    Plugin.DisplayName);
                 btnReconnect.Enabled = true;
                 return;
             }
@@ -139,7 +137,9 @@ namespace MumbleReconnect
             var ok = await AudioReconnect.TryReconnectAsync();
             if (!ok)
             {
-                MessageBox.Show(this, "Reconnect failed. Check logs for details.", Plugin.DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Errors.Add(new Exception(
+                    "Manual Mumble reconnect failed - the link did not come back up. Auto-retry will continue in the background."),
+                    Plugin.DisplayName);
             }
             btnReconnect.Enabled = true;
         }

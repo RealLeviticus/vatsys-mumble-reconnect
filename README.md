@@ -1,14 +1,13 @@
 # MumbleReconnect
 
-A vatSys plugin that detects AFV/Mumble audio disconnects and provides manual and automatic reconnection. Adds a `Mumble Status` dropdown to the menu bar that turns red when disconnected.
+A vatSys plugin that detects Mumble audio disconnects and provides manual and automatic reconnection. Adds a `Mumble Status` dropdown to the menu bar that turns red when disconnected.
 
 ## Features
-- Detects AFV/Mumble audio connection state via a `Mumble Status` menu bar button.
+- Detects Mumble audio connection state via a `Mumble Status` menu bar button.
 - Red background indicator when audio is disconnected; default styling when connected.
 - Dropdown with a `Reconnect` button (available to all users).
 - Optional `Disconnect` button in the dropdown for whitelisted CIDs only.
 - Automatic background reconnect attempts with exponential backoff (5/10/20/40/60 seconds) when audio drops while connected to VATSIM, falling back to a slow retry every 60 seconds after the fast attempts are exhausted.
-- Prompt on audio loss offering a manual Retry action (only when Mumble is actually disconnected).
 - Uses reflection to call internal vatSys Mumble methods (connect/reconnect/disconnect).
 
 ## Installation
@@ -31,9 +30,7 @@ Notes:
 - Click the button to open a dropdown:
   - `Reconnect` -- attempts an immediate reconnect (only available while connected to VATSIM on an ATC position).
   - `Disconnect` -- forces a disconnect (only visible for whitelisted CIDs).
-- When the plugin detects an audio loss it will:
-  - Show a prompt offering Retry (message box on a separate STA thread).
-  - Begin automatic background reconnect attempts (backing off from 5 up to 60 seconds between attempts) when connected to the official VATSIM server on an ATC position.
+- When the plugin detects an audio loss it will turn the menu button red, log a single message to the error window, and begin automatic background reconnect attempts (backing off from 5 up to 60 seconds between attempts) when connected to the official VATSIM server on an ATC position.
 
 Behavior details:
 - Manual reconnect is only allowed while connected to VATSIM on an ATC position (to prevent abuse).
@@ -43,7 +40,6 @@ Behavior details:
 ## Troubleshooting
 - Menu not visible: wait a few seconds after vatSys starts. The plugin waits for the UI to be ready before injecting the menu.
 - Reconnect fails or reports an error: ensure you are connected to the official VATSIM server on an ATC position and that vatSys internals have not changed.
-- Prompt not shown: the prompt runs on an STA background thread; if UI restrictions or security policies prevent message boxes from appearing, check vatSys logs or debug output for reflection exceptions.
 - Check the vatSys plugin logs or Debug output for reflection-related exceptions -- they indicate missing or renamed internal members.
 
 ## Building from source

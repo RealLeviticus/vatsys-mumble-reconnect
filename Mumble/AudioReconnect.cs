@@ -2,7 +2,6 @@ using System;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using vatsys;
 
 namespace MumbleReconnect
@@ -24,7 +23,6 @@ namespace MumbleReconnect
         private static readonly SemaphoreSlim _reconnectGate = new SemaphoreSlim(1, 1);
         private static volatile bool _everConnected;
         private static volatile bool _manualDisconnect;
-        private static int _promptOpen;
         private static bool _outageActive;
         private static bool _gaveUp;
         private static int _retryCount;
@@ -57,9 +55,6 @@ namespace MumbleReconnect
         {
             try
             {
-                AFV.Connected += (_, __) => OnConnected();
-                AFV.Disconnected += (_, __) => OnDisconnected();
-
                 _everConnected = IsConnected;
                 _lastConnected = IsConnected;
                 NotifyStatus(IsConnected);
@@ -77,92 +72,16 @@ namespace MumbleReconnect
             }
         }
 
-        private static void OnConnected()
-        {
-            _everConnected = true;
-            Interlocked.Exchange(ref _promptOpen, 0);
-            // AFV and Mumble are separate connections - report the actual Mumble state
-            // rather than assuming Mumble is up because AFV came up.
-            NotifyStatus(IsConnected);
-        }
-
-        private static void OnDisconnected()
-        {
-            if (!_everConnected) return;
-
-            // Only prompt if vatsim network is still up.
-            if (!Network.IsConnected)
-            {
-                NotifyStatus(false);
-                return;
-            }
-
-            NotifyStatus(IsConnected);
-
-            // AFV reconnects itself natively, and the Retry button below only
-            // reconnects Mumble - so only prompt when Mumble is actually down.
-            if (!IsConnected)
-            {
-                ShowPrompt();
-            }
-        }
-
-        private static void ShowPrompt()
-        {
-            if (Interlocked.CompareExchange(ref _promptOpen, 1, 0) != 0) return;
-
-            var promptThread = new Thread(() =>
-            {
-                try
-                {
-                    var result = MessageBox.Show(
-                        "Audio connection to the Mumble server was lost. Automatic reconnection will begin shortly - click Retry to attempt one now.",
-                        Plugin.DisplayName,
-                        MessageBoxButtons.RetryCancel,
-                        MessageBoxIcon.Warning);
-
-                    if (result == DialogResult.Retry)
-                    {
-                        TryReconnect();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Errors.Add(ex, Plugin.DisplayName);
-                }
-                finally
-                {
-                    Interlocked.Exchange(ref _promptOpen, 0);
-                }
-            })
-            {
-                IsBackground = true
-            };
-
-            promptThread.SetApartmentState(ApartmentState.STA);
-            promptThread.Start();
-        }
-
-        internal static bool TryReconnect()
-        {
-            return TryReconnectInternal(out _);
-        }
-
         internal static bool TryReconnect(out string errorMessage)
         {
-            return TryReconnectInternal(out errorMessage);
+            var result = TryReconnectCoreAsync().GetAwaiter().GetResult();
+            errorMessage = result.ErrorMessage;
+            return result.Success;
         }
 
         internal static async Task<bool> TryReconnectAsync()
         {
             var result = await TryReconnectCoreAsync().ConfigureAwait(false);
-            return result.Success;
-        }
-
-        private static bool TryReconnectInternal(out string errorMessage)
-        {
-            var result = TryReconnectCoreAsync().GetAwaiter().GetResult();
-            errorMessage = result.ErrorMessage;
             return result.Success;
         }
 
@@ -327,27 +246,40 @@ namespace MumbleReconnect
 
         private static void TickAutoReconnectCore()
         {
-            // Only check for disconnects when connected to the network
-            if (!Network.IsConnected)
+            // Always poll the real Mumble state, even off-network - vatSys
+            // deliberately disconnects Mumble when the VATSIM network drops
+            // (Audio.VATSIM_NetworkDisconnected), and the indicator must follow.
+            var connected = IsMumbleConnected();
+
+            if (connected)
             {
+                _everConnected = true;
+                _manualDisconnect = false;
+                if (!_lastConnected) NotifyStatus(true);
+                ResetRetryState();
+                _lastConnected = true;
                 return;
             }
 
-            // Don't try to reconnect if Mumble has never connected yet -
+            // Don't react at all if Mumble has never connected yet -
             // the user may still be in the process of connecting.
             if (!_everConnected)
             {
                 return;
             }
 
-            var connected = IsMumbleConnected();
-
-            if (connected)
+            // Mumble is down - reflect it in the UI on the transition.
+            if (_lastConnected)
             {
-                _manualDisconnect = false;
-                if (!_lastConnected) NotifyStatus(true);
+                NotifyStatus(false);
+                _lastConnected = false;
+            }
+
+            // No auto-reconnect (or outage logging) while off the network -
+            // vatSys reconnects Mumble itself when the network comes back.
+            if (!Network.IsConnected)
+            {
                 ResetRetryState();
-                _lastConnected = true;
                 return;
             }
 
@@ -374,10 +306,7 @@ namespace MumbleReconnect
             {
                 var errorMsg = $"Connection to Mumble Lost. Reconnection attempt in {FastRetryDelaysSeconds[0]} seconds.";
                 Errors.Add(new Exception(errorMsg), Plugin.DisplayName);
-                NotifyStatus(false);
             }
-
-            _lastConnected = false;
 
             lock (_lock)
             {
